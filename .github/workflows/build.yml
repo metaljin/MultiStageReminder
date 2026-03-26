@@ -13,10 +13,11 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-    - name: Build Release APK
-      run: ./gradlew assembleRelease
+    # 关键修复：用 gradle 命令替代找不到的 ./gradlew
+    - name: Build APK
+      run: gradle assembleRelease
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: MultiStageReminder
-        path: app/build/outputs/apk/release/*.apk
+        name: app-release
+        path: '**/build/outputs/apk/release/*.apk'
