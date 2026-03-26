@@ -11,5 +11,7 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
+
 rootProject.name = "MultiStageReminder"
-include ':app'
+// 强制识别app模块
+include ":app"
