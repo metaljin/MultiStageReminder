@@ -9,10 +9,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: 安装Gradle
+    - name: 安装Gradle 8.0
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: 7.5
+        gradle-version: 8.0
 
     - name: 编译APK
       run: gradle assembleRelease
