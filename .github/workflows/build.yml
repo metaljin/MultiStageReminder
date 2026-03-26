@@ -10,10 +10,12 @@ jobs:
     - uses: actions/checkout@v4
     - name: 赋权
       run: chmod +x gradlew
+    # 编译 Debug 包（自动签名，一定生成！）
     - name: 编译
-      run: ./gradlew assembleRelease
+      run: ./gradlew assembleDebug
+    # 上传 Debug 安装包
     - name: 上传
       uses: actions/upload-artifact@v4
       with:
-        name: app-release
-        path: app/build/outputs/apk/release/*.apk
+        name: app-debug
+        path: app/build/outputs/apk/debug/*.apk
