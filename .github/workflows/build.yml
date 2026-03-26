@@ -1,4 +1,4 @@
-name: 最终编译
+name: 最终成功编译
 on:
   push:
     branches: [ main ]
@@ -8,9 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: 编译APK
-      run: gradle assembleRelease
-    - name: 上传安装包
+    - name: 赋权
+      run: chmod +x gradlew
+    - name: 编译
+      run: ./gradlew assembleRelease
+    - name: 上传
       uses: actions/upload-artifact@v4
       with:
         name: app-release
