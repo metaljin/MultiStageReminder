@@ -1,4 +1,4 @@
-name: 最终成功编译
+name: 纯编译APK
 on:
   push:
     branches: [ main ]
@@ -8,14 +8,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: 赋权
-      run: chmod +x gradlew
-    # 编译 Debug 包（自动签名，一定生成！）
-    - name: 编译
-      run: ./gradlew assembleDebug
-    # 上传 Debug 安装包
-    - name: 上传
+    
+    # 直接用系统Gradle，不碰任何脚本
+    - name: 编译安装包
+      run: gradle assembleDebug
+      
+    # 通配符查找所有APK
+    - name: 上传APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: app/build/outputs/apk/debug/*.apk
+        path: '**/*.apk'
