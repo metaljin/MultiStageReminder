@@ -1,17 +1,8 @@
 pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-    }
+    repositories { google() mavenCentral() }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
+    repositories { google() mavenCentral() }
 }
-
 rootProject.name = "MultiStageReminder"
-// 强制识别app模块
 include ":app"
