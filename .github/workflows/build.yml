@@ -1,15 +1,37 @@
-name: 编译APK
-on: push
+name: Build APK
+on:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: 编译
-      run: gradle :app:assembleDebug
-    - name: 上传
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/*.apk
+      - uses: actions/checkout@v4
+
+      # 1. 安装JDK
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      # 2. 🔥 自动初始化Gradle包装器（自动生成gradlew，无需手动创建！）
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      # 3. 赋权 + 编译
+      - name: Build APK
+        run: |
+          gradle wrapper
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      # 4. 上传APK
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: "**/*.apk"
