@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">多阶段循环提醒</string>
+    <string name="add_template">添加模板</string>
+    <string name="start">启动</string>
+    <string name="edit">编辑</string>
+    <string name="delete">删除</string>
+</resources>
