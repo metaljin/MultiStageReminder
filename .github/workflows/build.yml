@@ -1,4 +1,4 @@
-name: 纯编译APK
+name: 编译APK
 on:
   push:
     branches: [ main ]
@@ -8,17 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
-    - name: 安装Gradle 8.0
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: 8.0
 
-    - name: 编译APK
-      run: gradle assembleRelease
-
-    - name: 上传APK
+    - name: Build
+      run: gradle assembleRelease -Dgradle.version=8.0
+      
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: app-unsigned
-        path: '**/build/outputs/apk/release/*.apk'
+        name: app
+        path: "**/build/outputs/apk/release/*.apk"
