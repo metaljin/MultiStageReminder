@@ -28,8 +28,9 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
-// 定义 UI 层的阶段数据模型
+// UI 数据模型保持不变
 data class StageUIItem(
     val minutes: String = "1",
     val ringtoneUri: String = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION).toString(),
@@ -62,7 +63,7 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
     var cycles by remember { mutableStateOf("1") }
     val stages = remember { mutableStateListOf(StageUIItem()) }
     
-    // 初始化数据（如果是编辑模式）
+    // 初始化数据（编辑模式）
     LaunchedEffect(existingId) {
         if (existingId != -1L) {
             withContext(Dispatchers.IO) {
@@ -71,7 +72,13 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                     cycles = data.template.totalCycles.toString()
                     stages.clear()
                     stages.addAll(data.stages.map { 
-                        StageUIItem(it.durationMinutes.toString(), it.ringtoneUri, "已保存铃声") 
+                        // 从路径中提取文件名作为显示名称
+                        val displayName = if (it.ringtoneUri.contains("/")) {
+                            it.ringtoneUri.substringAfterLast("/") 
+                        } else {
+                            "已保存铃声"
+                        }
+                        StageUIItem(it.durationMinutes.toString(), it.ringtoneUri, displayName) 
                     })
                 }
             }
@@ -101,7 +108,6 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
 
             Text("阶段列表", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 16.dp))
 
-            // 动态阶段列表
             LazyColumn(modifier = Modifier.weight(1f)) {
                 itemsIndexed(stages) { index, stage ->
                     StageItemRow(
@@ -125,16 +131,23 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                         Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    // 保存逻辑
                     (context as ComponentActivity).lifecycleScope.launch(Dispatchers.IO) {
+                        // 如果是编辑模式，先删除旧的（为了简单处理多对多关系）
                         if (existingId != -1L) {
-                            // 编辑模式：简单处理可以先删再插，或者更新
-                            db.reminderDao().deleteTemplate(db.reminderDao().getTemplateById(existingId)!!.template)
+                            db.reminderDao().getTemplateById(existingId)?.let {
+                                db.reminderDao().deleteTemplate(it.template)
+                            }
                         }
                         
                         val newId = db.reminderDao().insertTemplate(Template(name = name, totalCycles = cycles.toIntOrNull() ?: 1))
                         val entities = stages.mapIndexed { i, s ->
-                            Stage(templateId = newId, orderIndex = i, durationMinutes = s.minutes.toIntOrNull() ?: 1, ringtoneUri = s.ringtoneUri, maxPlaySeconds = 10)
+                            Stage(
+                                templateId = newId, 
+                                orderIndex = i, 
+                                durationMinutes = s.minutes.toIntOrNull() ?: 1, 
+                                ringtoneUri = s.ringtoneUri, 
+                                maxPlaySeconds = 10
+                            )
                         }
                         db.reminderDao().insertStages(entities)
                         
@@ -155,16 +168,34 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
 @Composable
 fun StageItemRow(index: Int, stage: StageUIItem, onDelete: () -> Unit, onUpdate: (StageUIItem) -> Unit) {
     val context = LocalContext.current
+    
+    // 铃声选择回调
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            uri?.let { onUpdate(stage.copy(ringtoneUri = it.toString(), ringtoneName = it.lastPathSegment ?: "自定义")) }
+            uri?.let { sourceUri ->
+                // 1. 获取显示名称
+                val ringtone = RingtoneManager.getRingtone(context, sourceUri)
+                val title = ringtone.getTitle(context) ?: "未知铃声"
+                
+                // 2. 核心：复制文件到私有目录，确保永久访问权
+                val internalPath = FileUtil.copyUriToInternalStorage(context, sourceUri, title)
+                
+                if (internalPath != null) {
+                    onUpdate(stage.copy(ringtoneUri = internalPath, ringtoneName = title))
+                } else {
+                    // 如果复制失败（如系统铃声），退而求其次存 URI 字符串
+                    onUpdate(stage.copy(ringtoneUri = sourceUri.toString(), ringtoneName = title))
+                }
+            }
         }
     }
 
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("第${index + 1}阶段", modifier = Modifier.width(60.dp))
+            Column(modifier = Modifier.width(65.dp)) {
+                Text("阶段 ${index + 1}", style = MaterialTheme.typography.bodySmall)
+            }
             
             OutlinedTextField(
                 value = stage.minutes,
@@ -174,20 +205,33 @@ fun StageItemRow(index: Int, stage: StageUIItem, onDelete: () -> Unit, onUpdate:
                 modifier = Modifier.width(80.dp)
             )
 
-            IconButton(onClick = {
-                val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                    putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
-                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(stage.ringtoneUri))
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 显示当前选择的铃声名称
+            Column(modifier = Modifier.weight(1f)) {
+                TextButton(
+                    onClick = {
+                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                            // 注意：由于存储的是路径，预览可能不生效，这里暂传默认
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+                        }
+                        launcher.launch(intent)
+                    },
+                    contentPadding = PaddingValues(4.dp)
+                ) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stage.ringtoneName,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1
+                    )
                 }
-                launcher.launch(intent)
-            }) {
-                Icon(Icons.Default.Notifications, contentDescription = "选铃声")
             }
 
-            Spacer(modifier = Modifier.weight(1f))
-
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "删除")
+                Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
             }
         }
     }
