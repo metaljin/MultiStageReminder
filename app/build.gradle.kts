@@ -38,6 +38,8 @@ android {
 }
 
 dependencies {
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.11.0")
     // Compose 基础
     val composeBom = platform("androidx.compose:compose-bom:2024.02.00")
     implementation(composeBom)
