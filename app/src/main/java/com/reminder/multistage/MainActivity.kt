@@ -171,7 +171,7 @@ fun TemplateItemCard(
                         onClick = onStop,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Icon(Icons.Default.Stop, contentDescription = null)
+                        Icon(Icons.Default.Close, contentDescription = null)
                         Text("停止")
                     }
                 } else {
