@@ -4,10 +4,10 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,10 +17,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,7 +31,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 1. 权限申请
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         }
@@ -59,7 +56,7 @@ class MainActivity : ComponentActivity() {
                         val intent = Intent(this, ReminderService::class.java).apply {
                             action = ReminderService.ACTION_STOP
                         }
-                        startService(intent) // 发送停止指令
+                        startService(intent)
                     },
                     onEdit = { templateId ->
                         val intent = Intent(this, EditTemplateActivity::class.java).apply {
@@ -88,7 +85,7 @@ fun MainScreen(
     val templates by db.reminderDao().getAllTemplates().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     
-    // --- 核心修改：状态监听 ---
+    // 状态监听
     var serviceActive by remember { mutableStateOf(ReminderService.isRunning) }
     var activeId by remember { mutableStateOf(ReminderService.runningTemplateId) }
     var currentTime by remember { mutableStateOf(ReminderService.displayTime) }
@@ -103,7 +100,6 @@ fun MainScreen(
             delay(500)
         }
     }
-    // -----------------------
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("多阶段提醒") }) },
@@ -121,9 +117,9 @@ fun MainScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(templates) { item ->
+                items(templates, key = { it.template.id }) { item ->
                     val isThisOneRunning = serviceActive && item.template.id == activeId
                     TemplateItemCard(
                         item = item,
@@ -131,7 +127,7 @@ fun MainScreen(
                         timeText = currentTime,
                         infoText = currentInfo,
                         onStart = { onStartService(item.template.id) },
-                        onStop = onStopService, // 传递停止动作
+                        onStop = onStopService,
                         onEdit = { onEdit(item.template.id) },
                         onDelete = {
                             scope.launch(Dispatchers.IO) {
@@ -156,62 +152,95 @@ fun TemplateItemCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val template = item.template
     Card(
         modifier = Modifier.fillMaxWidth(),
-        border = if (isRunning) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+        border = if (isRunning) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isRunning) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f) 
+                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = item.template.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            if (isRunning) {
-                    // 正在运行状态标签
-                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.small) {
-                    Text("运行中", modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+            // 第一行：标题和状态
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = item.template.name, 
+                    style = MaterialTheme.typography.titleLarge, 
+                    modifier = Modifier.weight(1f)
+                )
+                if (isRunning) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = MaterialTheme.shapes.extraSmall
+                    ) {
+                        Text(
+                            "运行中", 
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 }
             }
-            Text(text = "循环次数: ${template.totalCycles}", style = MaterialTheme.typography.bodyMedium)
-            Text(text = "阶段总数: ${item.stages.size}", style = MaterialTheme.typography.bodySmall)
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDelete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                    Icon(Icons.Default.Delete, contentDescription = null)
-                    Text("删除")
-                }
-                TextButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                    Text("编辑")
-                }
 
-                // --- 核心修改：动态切换按钮 ---
-                if (isRunning) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = timeText, style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(text = infoText, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 第二行：倒计时展示 或 基础信息
+            if (isRunning) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Text(
+                        text = timeText, 
+                        style = MaterialTheme.typography.displayMedium, 
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = infoText, 
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = "配置：${item.template.totalCycles} 次循环 | ${item.stages.size} 个阶段",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 第三行：动作按钮
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (!isRunning) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                    }
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = "编辑")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onStart) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("开始任务")
                     }
                 } else {
-                    Text(text = "循环: ${item.template.totalCycles} 次 | 阶段: ${item.stages.size}", style = MaterialTheme.typography.bodyMedium)
-                }
-                // ---------------------------
-                Spacer(modifier = Modifier.height(16.dp))
-            
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (!isRunning) {
-                        TextButton(onClick = onDelete) { Text("删除") }
-                        TextButton(onClick = onEdit) { Text("编辑") }
-                        Button(onClick = onStart) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Text("启动")
-                        }
-                    } else {
-                        // 运行时只显示停止按钮，防止误操作
-                        Button(onClick = onStop, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-                            Icon(Icons.Default.Close, contentDescription = null) // 修复之前的 Stop 编译错误
-                            Text("停止任务")
-                        }
+                    Button(
+                        onClick = onStop,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("强制停止")
                     }
                 }
             }
