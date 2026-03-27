@@ -16,6 +16,9 @@ class ReminderService : Service() {
 
     companion object {
         var isRunning = false
+        var runningTemplateId = -1L // 记录当前运行的模板 ID
+        var displayTime = ""        // 记录倒计时字符串，如 "01:23"
+        var displayInfo = ""        // 记录循环信息，如 "循环 1/3 | 阶段 2"
         const val ACTION_START = "START"
         const val ACTION_STOP = "STOP"
         const val EXTRA_ID = "ID"
@@ -28,6 +31,7 @@ class ReminderService : Service() {
                 val tid = intent.getLongExtra(EXTRA_ID, -1L)
                 if (tid != -1L && !isRunning) {
                     isRunning = true
+                    runningTemplateId = tid
                     startForeground(100, createNotification("正在初始化数据..."))
                     loadAndStart(tid)
                 }
@@ -80,7 +84,9 @@ class ReminderService : Service() {
             countDownTimer = object : CountDownTimer(totalMillis, 1000) {
                 override fun onTick(millisUntilFinished: Long) {
                     val sec = millisUntilFinished / 1000
-                    updateNotification("倒计时: ${sec / 60}:${String.format("%02d", sec % 60)} (循环 $currentCycle)")
+                    displayTime = "${sec / 60}:${String.format("%02d", sec % 60)}"
+                    displayInfo = "循环 $currentCycle/${data.template.totalCycles} | 阶段 ${currentStageIndex + 1}"
+                    updateNotification("倒计时: $displayTime ($displayInfo)")
                 }
 
                 override fun onFinish() {
@@ -146,6 +152,9 @@ class ReminderService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        runningTemplateId = -1L
+        displayTime = ""
+        displayInfo = ""
         countDownTimer?.cancel()
         serviceScope.cancel()
         stopMedia()
