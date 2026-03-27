@@ -12,10 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,8 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -36,11 +33,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 申请 Android 13+ 的通知权限
+        // 1. 权限申请
         if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissionLauncher.launch(
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS)
-            )
+            requestPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         }
 
         val db = AppDatabase.getInstance(applicationContext)
@@ -59,7 +54,12 @@ class MainActivity : ComponentActivity() {
                         } else {
                             startService(intent)
                         }
-                        Toast.makeText(this, "提醒已启动", Toast.LENGTH_SHORT).show()
+                    },
+                    onStopService = {
+                        val intent = Intent(this, ReminderService::class.java).apply {
+                            action = ReminderService.ACTION_STOP
+                        }
+                        startService(intent) // 发送停止指令
                     },
                     onEdit = { templateId ->
                         val intent = Intent(this, EditTemplateActivity::class.java).apply {
@@ -81,12 +81,24 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     db: AppDatabase,
     onStartService: (Long) -> Unit,
+    onStopService: () -> Unit,
     onEdit: (Long) -> Unit,
     onAdd: () -> Unit
 ) {
-    // 自动观察数据库 Flow，并转换为 Compose State
     val templates by db.reminderDao().getAllTemplates().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
+    
+    // --- 核心修改：状态监听 ---
+    var serviceActive by remember { mutableStateOf(ReminderService.isRunning) }
+    
+    // 启动一个协程，每 500 毫秒检查一次 Service 是否正在运行
+    LaunchedEffect(Unit) {
+        while(true) {
+            serviceActive = ReminderService.isRunning
+            delay(500)
+        }
+    }
+    // -----------------------
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("多阶段提醒") }) },
@@ -109,7 +121,9 @@ fun MainScreen(
                 items(templates) { item ->
                     TemplateItemCard(
                         item = item,
+                        isRunning = serviceActive, // 传递运行状态
                         onStart = { onStartService(item.template.id) },
+                        onStop = onStopService, // 传递停止动作
                         onEdit = { onEdit(item.template.id) },
                         onDelete = {
                             scope.launch(Dispatchers.IO) {
@@ -126,7 +140,9 @@ fun MainScreen(
 @Composable
 fun TemplateItemCard(
     item: TemplateWithStages,
+    isRunning: Boolean,
     onStart: () -> Unit,
+    onStop: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -148,10 +164,23 @@ fun TemplateItemCard(
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Text("编辑")
                 }
-                Button(onClick = onStart) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Text("启动")
+
+                // --- 核心修改：动态切换按钮 ---
+                if (isRunning) {
+                    Button(
+                        onClick = onStop,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = null)
+                        Text("停止")
+                    }
+                } else {
+                    Button(onClick = onStart) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Text("启动")
+                    }
                 }
+                // ---------------------------
             }
         }
     }
