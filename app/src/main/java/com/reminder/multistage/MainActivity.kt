@@ -10,6 +10,7 @@ import com.reminder.multistage.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : AppCompatActivity() {
     private lateinit var bind: ActivityMainBinding
