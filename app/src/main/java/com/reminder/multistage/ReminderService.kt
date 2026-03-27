@@ -112,7 +112,7 @@ class ReminderService : android.app.Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("运行中")
             .setContentText("阶段 ${stageIndex+1}")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(android.R.drawable.sym_def_app_icon)
             .setContentIntent(pi)
             .build()
     }
