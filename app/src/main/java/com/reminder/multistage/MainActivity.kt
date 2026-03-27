@@ -106,14 +106,14 @@ fun MainScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(templates) { template ->
+                items(templates) { item ->
                     TemplateItemCard(
-                        template = template,
-                        onStart = { onStartService(template.id) },
-                        onEdit = { onEdit(template.id) },
+                        item = item,
+                        onStart = { onStartService(item.template.id) },
+                        onEdit = { onEdit(item.template.id) },
                         onDelete = {
                             scope.launch(Dispatchers.IO) {
-                                db.reminderDao().deleteTemplate(template)
+                                db.reminderDao().deleteTemplate(item.template)
                             }
                         }
                     )
@@ -125,15 +125,17 @@ fun MainScreen(
 
 @Composable
 fun TemplateItemCard(
-    template: Template,
+    item: TemplateWithStages,
     onStart: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val template = item.template
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = template.name, style = MaterialTheme.typography.titleLarge)
             Text(text = "循环次数: ${template.totalCycles}", style = MaterialTheme.typography.bodyMedium)
+            Text(text = "阶段总数: ${item.stages.size}", style = MaterialTheme.typography.bodySmall)
             
             Spacer(modifier = Modifier.height(16.dp))
             
