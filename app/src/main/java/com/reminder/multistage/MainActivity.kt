@@ -90,11 +90,16 @@ fun MainScreen(
     
     // --- 核心修改：状态监听 ---
     var serviceActive by remember { mutableStateOf(ReminderService.isRunning) }
-    
-    // 启动一个协程，每 500 毫秒检查一次 Service 是否正在运行
+    var activeId by remember { mutableStateOf(ReminderService.runningTemplateId) }
+    var currentTime by remember { mutableStateOf(ReminderService.displayTime) }
+    var currentInfo by remember { mutableStateOf(ReminderService.displayInfo) }
+
     LaunchedEffect(Unit) {
         while(true) {
             serviceActive = ReminderService.isRunning
+            activeId = ReminderService.runningTemplateId
+            currentTime = ReminderService.displayTime
+            currentInfo = ReminderService.displayInfo
             delay(500)
         }
     }
@@ -119,9 +124,12 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(templates) { item ->
+                    val isThisOneRunning = serviceActive && item.template.id == activeId
                     TemplateItemCard(
                         item = item,
-                        isRunning = serviceActive, // 传递运行状态
+                        isRunning = isThisOneRunning,
+                        timeText = currentTime,
+                        infoText = currentInfo,
                         onStart = { onStartService(item.template.id) },
                         onStop = onStopService, // 传递停止动作
                         onEdit = { onEdit(item.template.id) },
@@ -141,15 +149,26 @@ fun MainScreen(
 fun TemplateItemCard(
     item: TemplateWithStages,
     isRunning: Boolean,
+    timeText: String,
+    infoText: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val template = item.template
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = if (isRunning) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = template.name, style = MaterialTheme.typography.titleLarge)
+            Text(text = item.template.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            if (isRunning) {
+                    // 正在运行状态标签
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.small) {
+                    Text("运行中", modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Text(text = "循环次数: ${template.totalCycles}", style = MaterialTheme.typography.bodyMedium)
             Text(text = "阶段总数: ${item.stages.size}", style = MaterialTheme.typography.bodySmall)
             
@@ -167,20 +186,34 @@ fun TemplateItemCard(
 
                 // --- 核心修改：动态切换按钮 ---
                 if (isRunning) {
-                    Button(
-                        onClick = onStop,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = null)
-                        Text("停止")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = timeText, style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(text = infoText, style = MaterialTheme.typography.bodyMedium)
                     }
                 } else {
-                    Button(onClick = onStart) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Text("启动")
-                    }
+                    Text(text = "循环: ${item.template.totalCycles} 次 | 阶段: ${item.stages.size}", style = MaterialTheme.typography.bodyMedium)
                 }
                 // ---------------------------
+                Spacer(modifier = Modifier.height(16.dp))
+            
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    if (!isRunning) {
+                        TextButton(onClick = onDelete) { Text("删除") }
+                        TextButton(onClick = onEdit) { Text("编辑") }
+                        Button(onClick = onStart) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Text("启动")
+                        }
+                    } else {
+                        // 运行时只显示停止按钮，防止误操作
+                        Button(onClick = onStop, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                            Icon(Icons.Default.Close, contentDescription = null) // 修复之前的 Stop 编译错误
+                            Text("停止任务")
+                        }
+                    }
+                }
             }
         }
     }
