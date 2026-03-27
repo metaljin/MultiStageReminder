@@ -21,7 +21,7 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1" // 根据你的 Kotlin 版本调整
+        kotlinCompilerExtensionVersion = "1.5.4" // 根据你的 Kotlin 版本调整
     }
     buildTypes {
         release {
