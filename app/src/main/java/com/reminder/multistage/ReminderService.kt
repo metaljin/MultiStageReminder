@@ -16,9 +16,10 @@ class ReminderService : Service() {
 
     companion object {
         var isRunning = false
-        var runningTemplateId = -1L // 记录当前运行的模板 ID
-        var displayTime = ""        // 记录倒计时字符串，如 "01:23"
-        var displayInfo = ""        // 记录循环信息，如 "循环 1/3 | 阶段 2"
+        var runningTemplateId = -1L 
+        var displayTime = "00:00"    // 默认初始值
+        var displayInfo = ""        
+        
         const val ACTION_START = "START"
         const val ACTION_STOP = "STOP"
         const val EXTRA_ID = "ID"
@@ -32,7 +33,7 @@ class ReminderService : Service() {
                 if (tid != -1L && !isRunning) {
                     isRunning = true
                     runningTemplateId = tid
-                    startForeground(100, createNotification("正在初始化数据..."))
+                    startForeground(100, createNotification("准备启动..."))
                     loadAndStart(tid)
                 }
             }
@@ -62,12 +63,12 @@ class ReminderService : Service() {
 
         fun nextStep() {
             if (currentStageIndex >= data.stages.size) {
-                // 当前循环的所有阶段跑完了
                 if (currentCycle < data.template.totalCycles) {
                     currentCycle++
                     currentStageIndex = 0
                 } else {
-                    // 全部大循环结束
+                    displayTime = "完成"
+                    displayInfo = "所有提醒已结束"
                     updateNotification("提醒任务已完成")
                     handler.postDelayed({ stopSelf() }, 3000)
                     return
@@ -76,23 +77,26 @@ class ReminderService : Service() {
 
             val stage = data.stages[currentStageIndex]
             val totalMillis = stage.durationMinutes * 60 * 1000L
-
-            // 更新通知栏显示进度
-            updateNotification("循环 $currentCycle/${data.template.totalCycles} | 阶段 ${currentStageIndex + 1}/${data.stages.size}")
+            
+            // 更新 UI 初始信息
+            displayInfo = "循环 $currentCycle/${data.template.totalCycles} | 阶段 ${currentStageIndex + 1}/${data.stages.size}"
 
             countDownTimer?.cancel()
             countDownTimer = object : CountDownTimer(totalMillis, 1000) {
                 override fun onTick(millisUntilFinished: Long) {
-                    val sec = millisUntilFinished / 1000
-                    displayTime = "${sec / 60}:${String.format("%02d", sec % 60)}"
-                    displayInfo = "循环 $currentCycle/${data.template.totalCycles} | 阶段 ${currentStageIndex + 1}"
+                    val secTotal = millisUntilFinished / 1000
+                    val m = secTotal / 60
+                    val s = secTotal % 60
+                    displayTime = String.format("%02d:%02d", m, s)
                     updateNotification("倒计时: $displayTime ($displayInfo)")
                 }
 
                 override fun onFinish() {
                     playRingtone(stage.ringtoneUri, stage.maxPlaySeconds)
                     currentStageIndex++
-                    nextStep() // 递归进入下一阶段
+                    // 在进入下一步前稍微预设一下 UI
+                    displayTime = "00:00" 
+                    nextStep()
                 }
             }.start()
         }
@@ -104,10 +108,11 @@ class ReminderService : Service() {
         try {
             stopMedia()
             mediaPlayer = MediaPlayer().apply {
-                // 如果路径是 Uri 字符串(系统铃声)或绝对路径(私有目录)都能处理
-                if (path.startsWith("/")) setDataSource(path) 
-                else setDataSource(applicationContext, android.net.Uri.parse(path))
-
+                if (path.startsWith("/")) {
+                    setDataSource(path)
+                } else {
+                    setDataSource(applicationContext, android.net.Uri.parse(path))
+                }
                 setAudioAttributes(AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
@@ -133,7 +138,8 @@ class ReminderService : Service() {
 
     private fun createNotification(content: String): Notification {
         val stopIntent = Intent(this, ReminderService::class.java).apply { action = ACTION_STOP }
-        val stopPending = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
+        val stopPending = PendingIntent.getService(this, 0, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(CHANNEL_ID, "计时提醒", NotificationManager.IMPORTANCE_LOW)
@@ -141,10 +147,10 @@ class ReminderService : Service() {
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("多阶段提醒运行中")
+            .setContentTitle("多阶段提醒: ${displayTime}") // 通知标题也显示时间，更直观
             .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setOnlyAlertOnce(true) // 重要：更新通知时不震动/响铃，只刷新文字
+            .setOnlyAlertOnce(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止任务", stopPending)
             .setOngoing(true)
             .build()
@@ -153,7 +159,7 @@ class ReminderService : Service() {
     override fun onDestroy() {
         isRunning = false
         runningTemplateId = -1L
-        displayTime = ""
+        displayTime = "00:00"
         displayInfo = ""
         countDownTimer?.cancel()
         serviceScope.cancel()
