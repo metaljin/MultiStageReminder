@@ -134,7 +134,7 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                         
                         val newId = db.reminderDao().insertTemplate(Template(name = name, totalCycles = cycles.toIntOrNull() ?: 1))
                         val entities = stages.mapIndexed { i, s ->
-                            Stage(templateId = newId, orderIndex = i, durationMinutes = s.minutes.toIntOrNull() ?: 1, ringtoneUri = s.ringtoneUri)
+                            Stage(templateId = newId, orderIndex = i, durationMinutes = s.minutes.toIntOrNull() ?: 1, ringtoneUri = s.ringtoneUri, maxPlaySeconds = 10)
                         }
                         db.reminderDao().insertStages(entities)
                         
@@ -181,7 +181,7 @@ fun StageItemRow(index: Int, stage: StageUIItem, onDelete: () -> Unit, onUpdate:
                 }
                 launcher.launch(intent)
             }) {
-                Icon(Icons.Default.MusicNote, contentDescription = "选铃声")
+                Icon(Icons.Default.Notifications, contentDescription = "选铃声")
             }
 
             Spacer(modifier = Modifier.weight(1f))
