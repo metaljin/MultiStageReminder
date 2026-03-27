@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.core.app.ActivityCompat
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.lifecycle.lifecycleScope
 import com.reminder.multistage.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +23,11 @@ class MainActivity : AppCompatActivity() {
         val adapter = TemplateAdapter({ start(it) }, {}, { delete(it) })
         bind.recyclerView.adapter = adapter
         bind.recyclerView.layoutManager = LinearLayoutManager(this)
-        db.reminderDao().getAllTemplates().observe(this) { adapter.submitList(it) }
+        lifecycleScope.launch {
+    db.reminderDao().getAllTemplates().collectLatest { 
+        adapter.submitList(it) 
+    }
+}
         bind.btnAdd.setOnClickListener { startActivity(Intent(this, EditTemplateActivity::class.java)) }
     }
     private fun start(id: Long) {
