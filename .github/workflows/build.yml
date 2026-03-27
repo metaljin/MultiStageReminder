@@ -15,15 +15,26 @@ jobs:
           java-version: 17
           distribution: 'temurin'
           cache: gradle
-
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+      - name: Decode Keystore
+        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > app/release.jks
 
-      - name: Assemble Debug APK
-        run: ./gradlew assembleDebug
+      - name: Build with Gradle
+        run: ./gradlew assembleRelease
+        env:
+          # 把 Secrets 变成环境变量传给 Gradle
+          KEY_STORE_PATH: release.jks
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Upload APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          # 修改名字，明确这是正式签名版
+          name: MultiStageReminder-Release
+          # 修改路径指向 release 文件夹
+          path: app/build/outputs/apk/release/*.apk
+          # 可选：设置保留天数（默认 90 天）
+          retention-days: 7
