@@ -50,4 +50,5 @@ dependencies {
     // 必须：添加协程和 Lifecycle 依赖（支持你代码中的 Flow 和 lifecycleScope） [cite: 188, 191]
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 }
