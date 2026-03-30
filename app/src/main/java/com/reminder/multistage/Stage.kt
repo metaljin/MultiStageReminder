@@ -15,5 +15,6 @@ data class Stage(
     val orderIndex: Int,
     val durationMinutes: Int,
     val ringtoneUri: String,
-    val maxPlaySeconds: Int
+	val ringtoneName: String,
+    val maxPlaySeconds: Int = 0
 )
