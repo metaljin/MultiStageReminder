@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.os.*
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
@@ -108,22 +109,36 @@ class ReminderService : Service() {
 
         // 1. 铃声逻辑
 		if (template.isSoundEnabled && path.isNotEmpty()) {
-            try {
-                stopMedia()
-                mediaPlayer = MediaPlayer().apply {
-                    if (path.startsWith("/")) setDataSource(path) 
-                    else setDataSource(applicationContext, android.net.Uri.parse(path))
-                    
-                    setAudioAttributes(AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                    
-                    isLooping = true // 铃声短时自动循环
-                    prepare()
-                    start()
-                }
-            } catch (e: Exception) { e.printStackTrace() }
-        }
+			try {
+				stopMedia()
+				mediaPlayer = MediaPlayer().apply {
+					val uri = android.net.Uri.parse(path)
+                
+					// 判断是否为内置资源路径
+					if (path.startsWith("android.resource")) {
+						val assetFileDescriptor = applicationContext.contentResolver.openAssetFileDescriptor(uri, "r")
+						if (assetFileDescriptor != null) {
+							setDataSource(assetFileDescriptor.fileDescriptor, assetFileDescriptor.startOffset, assetFileDescriptor.length)
+							assetFileDescriptor.close()
+						}
+					} else {
+						setDataSource(applicationContext, uri) // 系统选择器路径
+					}
+
+					setAudioAttributes(AudioAttributes.Builder()
+						.setUsage(AudioAttributes.USAGE_ALARM)
+						.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                
+					isLooping = true
+					prepare()
+					start()
+				}
+			} catch (e: Exception) {
+				e.printStackTrace()
+            // 如果报错，尝试播放系统默认通知音作为保底
+				playFallbackSound()
+			}
+		}
 
         // 2. 震动逻辑
 		if (template.isVibrateEnabled) {
@@ -156,6 +171,14 @@ class ReminderService : Service() {
 			stopMedia()
 			stopVibration()
 		}, "STOP_TAG", SystemClock.uptimeMillis() + durationMs)
+	}
+
+	private fun playFallbackSound() {
+		try {
+			val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+			mediaPlayer = MediaPlayer.create(applicationContext, defaultUri)
+			mediaPlayer?.start()
+		} catch (e: Exception) { e.printStackTrace() }
 	}
 
     private fun stopMedia() {

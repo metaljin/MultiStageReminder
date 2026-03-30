@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -17,7 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -34,12 +35,11 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
-// UI 数据模型保持不变
+// UI 数据模型：确保 ringtoneUri 匹配 res/raw/defult.ogg
 data class StageUIItem(
     val minutes: String = "1",
-    val ringtoneUri: String = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION).toString(),
+    val ringtoneUri: String = "android.resource://com.reminder.multistage/raw/defult",
     val ringtoneName: String = "默认铃声"
 )
 
@@ -67,31 +67,36 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var cycles by remember { mutableStateOf("1") }
-    
-    // 全局状态控制
     var isVibrate by remember { mutableStateOf(true) }
     var isSound by remember { mutableStateOf(true) }
     var ringDuration by remember { mutableStateOf("10") }
-    
-    // 错误状态记录
     var isNameError by remember { mutableStateOf(false) }
     
     val stages = remember { mutableStateListOf(StageUIItem()) }
     
-    // 初始化加载数据 (此处逻辑保持你原有的逻辑，但增加了新字段的读取)
     LaunchedEffect(existingId) {
         if (existingId != -1L) {
             withContext(Dispatchers.IO) {
                 db.reminderDao().getTemplateById(existingId)?.let { data ->
                     name = data.template.name
                     cycles = data.template.totalCycles.toString()
-                    // 假设你已在 Template 实体中增加了这些字段
                     isVibrate = data.template.isVibrateEnabled 
                     isSound = data.template.isSoundEnabled
+                    ringDuration = data.template.ringtoneDurationSeconds.toString()
                     
                     stages.clear()
                     stages.addAll(data.stages.map { 
-                        StageUIItem(it.durationMinutes.toString(), it.ringtoneUri, it.ringtoneUri.substringAfterLast("/", "默认铃声")) 
+                        // 逻辑微调：如果 ringtoneName 为空，则显示 URI 的最后一段，否则使用存储的名称
+                        val displayName = if (it.ringtoneName.isEmpty()) {
+                            if (it.ringtoneUri.contains("raw/defult")) "默认铃声" 
+                            else it.ringtoneUri.substringAfterLast("/", "未知铃声")
+                        } else it.ringtoneName
+
+                        StageUIItem(
+                            minutes = it.durationMinutes.toString(),
+                            ringtoneUri = it.ringtoneUri,
+                            ringtoneName = displayName
+                        ) 
                     })
                 }
             }
@@ -100,15 +105,15 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
 
     Scaffold(
         topBar = { 
-			TopAppBar(
-				title = { Text(if (existingId == -1L) "添加提醒模板" else "编辑提醒模板") },
-				navigationIcon = {
-					IconButton(onClick = onExit) {
-						Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-					}
-				}
-			) 
-		}
+            TopAppBar(
+                title = { Text(if (existingId == -1L) "添加提醒模板" else "编辑提醒模板") },
+                navigationIcon = {
+                    IconButton(onClick = onExit) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                }
+            ) 
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -116,7 +121,6 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                 .padding(16.dp)
                 .fillMaxSize()
         ) {
-            // 1. 模板标题区
             OutlinedTextField(
                 value = name,
                 onValueChange = { 
@@ -134,7 +138,6 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
             
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 2. 全局配置卡片：通过颜色和阴影与背景区分
             Text("总体配置", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
             Card(
@@ -179,7 +182,6 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. 阶段设置区
             Text("阶段设置", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             
             LazyColumn(
@@ -209,7 +211,6 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                 }
             }
 
-            // 4. 底部保存动作
             Button(
                 onClick = {
                     if (name.isBlank()) {
@@ -273,35 +274,35 @@ fun StageItemRow(
     
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
             if (uri != null) {
                 val ringtone = RingtoneManager.getRingtone(context, uri)
-                val title = ringtone?.getTitle(context) ?: "未知铃声"
-                
-                // 文件拷贝逻辑
+                val title = ringtone?.getTitle(context) ?: "选择铃声"
                 val internalPath = FileUtil.copyUriToInternalStorage(context, uri, title)
                 onUpdate(stage.copy(ringtoneUri = internalPath ?: uri.toString(), ringtoneName = title))
             }
         }
     }
 
-    // 使用 Surface 配合更大的 Elevation 实现悬浮效果
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 2.dp, vertical = 6.dp), // 增加外边距，让阴影更明显
-        shape = MaterialTheme.shapes.large, // 使用大圆角
-        color = MaterialTheme.colorScheme.surface, // 纯白背景
-        tonalElevation = 4.dp, // 增加色调提升，产生更深的阴影感
-        shadowElevation = 2.dp, // 物理阴影
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant) // 极细边框
+            .padding(horizontal = 2.dp, vertical = 6.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 4.dp,
+        shadowElevation = 2.dp,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 阶段编号
             Text(
                 text = "阶段 ${index + 1}", 
                 style = MaterialTheme.typography.titleSmall, 
@@ -309,7 +310,6 @@ fun StageItemRow(
                 modifier = Modifier.width(55.dp)
             )
             
-            // 时长输入
             OutlinedTextField(
                 value = stage.minutes,
                 onValueChange = { onUpdate(stage.copy(minutes = it)) },
@@ -322,7 +322,6 @@ fun StageItemRow(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 铃声选择区
             TextButton(
                 onClick = {
                     val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
@@ -353,7 +352,6 @@ fun StageItemRow(
                 )
             }
 
-            // 删除按钮
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier.size(40.dp)
