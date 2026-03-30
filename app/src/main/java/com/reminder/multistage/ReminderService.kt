@@ -126,28 +126,37 @@ class ReminderService : Service() {
         }
 
         // 2. 震动逻辑
-        if (template.isVibrateEnabled) {
-            vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vm.defaultVibrator
-            } else {
-                @Suppress("DEPRECATION") getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            }
+		if (template.isVibrateEnabled) {
+			try {
+				vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+					val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+					vm.defaultVibrator
+				} else {
+					@Suppress("DEPRECATION") getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+				}
 
-            val pattern = longArrayOf(0, 800, 400) // 震动800ms，停400ms
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-            } else {
-                @Suppress("DEPRECATION") vibrator?.vibrate(pattern, 0)
-            }
-        }
+				val pattern = longArrayOf(0, 800, 400) 
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+					// 使用 VibrationEffect.DEFAULT_AMPLITUDE 确保兼容性
+					vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+				} else {
+					@Suppress("DEPRECATION") vibrator?.vibrate(pattern, 0)
+				}
+			} catch (e: SecurityException) {
+				// 如果没加权限，这里会捕获异常并打印，而不会闪退
+				e.printStackTrace()
+			} catch (e: Exception) {
+				e.printStackTrace()
+			}
+		}
 
-        // 3. 达到设定时长后停止
-        handler.postDelayed({
-            stopMedia()
-            stopVibration()
-        }, durationMs)
-    }
+		// 3. 达到设定时长后停止 (注意：如果逻辑重叠，这可能会取消下一阶段的提醒)
+		handler.removeCallbacksAndMessages("STOP_TAG") // 清除之前的停止指令
+		handler.postAtTime({
+			stopMedia()
+			stopVibration()
+		}, "STOP_TAG", SystemClock.uptimeMillis() + durationMs)
+	}
 
     private fun stopMedia() {
         mediaPlayer?.stop()
