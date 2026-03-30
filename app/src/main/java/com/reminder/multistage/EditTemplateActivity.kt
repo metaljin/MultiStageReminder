@@ -36,10 +36,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// UI 数据模型：确保 ringtoneUri 匹配 res/raw/defult.ogg
+// UI 数据模型：确保 ringtoneUri 匹配 res/raw/base_reminder.ogg
 data class StageUIItem(
     val minutes: String = "1",
-    val ringtoneUri: String = "android.resource://com.reminder.multistage/raw/defult",
+    val ringtoneUri: String = "android.resource://com.reminder.multistage/raw/base_reminder",
     val ringtoneName: String = "默认铃声"
 )
 
@@ -88,7 +88,7 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                     stages.addAll(data.stages.map { 
                         // 逻辑微调：如果 ringtoneName 为空，则显示 URI 的最后一段，否则使用存储的名称
                         val displayName = if (it.ringtoneName.isEmpty()) {
-                            if (it.ringtoneUri.contains("raw/defult")) "默认铃声" 
+                            if (it.ringtoneUri.contains("raw/base_reminder")) "默认铃声" 
                             else it.ringtoneUri.substringAfterLast("/", "未知铃声")
                         } else it.ringtoneName
 
