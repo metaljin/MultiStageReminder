@@ -1,6 +1,7 @@
 package com.reminder.multistage
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -10,6 +11,7 @@ import kotlinx.coroutines.*
 
 class ReminderService : Service() {
     private var mediaPlayer: MediaPlayer? = null
+    private var vibrator: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
     private var countDownTimer: CountDownTimer? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -17,7 +19,7 @@ class ReminderService : Service() {
     companion object {
         var isRunning = false
         var runningTemplateId = -1L 
-        var displayTime = "00:00"    // 默认初始值
+        var displayTime = "00:00"
         var displayInfo = ""        
         
         const val ACTION_START = "START"
@@ -77,8 +79,6 @@ class ReminderService : Service() {
 
             val stage = data.stages[currentStageIndex]
             val totalMillis = stage.durationMinutes * 60 * 1000L
-            
-            // 更新 UI 初始信息
             displayInfo = "循环 $currentCycle/${data.template.totalCycles} | 阶段 ${currentStageIndex + 1}/${data.stages.size}"
 
             countDownTimer?.cancel()
@@ -92,48 +92,77 @@ class ReminderService : Service() {
                 }
 
                 override fun onFinish() {
-                    playRingtone(stage.ringtoneUri, stage.maxPlaySeconds)
+                    // 触发提醒：传入当前模板配置
+                    playAlert(stage.ringtoneUri, data.template)
                     currentStageIndex++
-                    // 在进入下一步前稍微预设一下 UI
                     displayTime = "00:00" 
                     nextStep()
                 }
             }.start()
         }
-
         nextStep()
     }
 
-    private fun playRingtone(path: String, maxSeconds: Int) {
-        try {
-            stopMedia()
-            mediaPlayer = MediaPlayer().apply {
-                if (path.startsWith("/")) {
-                    setDataSource(path)
-                } else {
-                    setDataSource(applicationContext, android.net.Uri.parse(path))
-                }
-                setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                prepare()
-                start()
-            }
-            if (maxSeconds > 0) handler.postDelayed({ stopMedia() }, maxSeconds * 1000L)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+    private fun playAlert(path: String, template: Template) {
+        val durationMs = template.ringtoneDurationSeconds * 1000L
 
-    private fun updateNotification(text: String) {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(100, createNotification(text))
+        // 1. 铃声逻辑
+		if (template.isSoundEnabled && path.isNotEmpty()) {
+            try {
+                stopMedia()
+                mediaPlayer = MediaPlayer().apply {
+                    if (path.startsWith("/")) setDataSource(path) 
+                    else setDataSource(applicationContext, android.net.Uri.parse(path))
+                    
+                    setAudioAttributes(AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                    
+                    isLooping = true // 铃声短时自动循环
+                    prepare()
+                    start()
+                }
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+
+        // 2. 震动逻辑
+        if (template.isVibrateEnabled) {
+            vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION") getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            val pattern = longArrayOf(0, 800, 400) // 震动800ms，停400ms
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            } else {
+                @Suppress("DEPRECATION") vibrator?.vibrate(pattern, 0)
+            }
+        }
+
+        // 3. 达到设定时长后停止
+        handler.postDelayed({
+            stopMedia()
+            stopVibration()
+        }, durationMs)
     }
 
     private fun stopMedia() {
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
+    }
+
+    private fun stopVibration() {
+        vibrator?.cancel()
+        vibrator = null
+    }
+
+    private fun updateNotification(text: String) {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(100, createNotification(text))
     }
 
     private fun createNotification(content: String): Notification {
@@ -147,11 +176,11 @@ class ReminderService : Service() {
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("多阶段提醒: ${displayTime}") // 通知标题也显示时间，更直观
+            .setContentTitle("任务进行中: $displayTime")
             .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setOnlyAlertOnce(true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止任务", stopPending)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopPending)
             .setOngoing(true)
             .build()
     }
@@ -159,11 +188,10 @@ class ReminderService : Service() {
     override fun onDestroy() {
         isRunning = false
         runningTemplateId = -1L
-        displayTime = "00:00"
-        displayInfo = ""
         countDownTimer?.cancel()
         serviceScope.cancel()
         stopMedia()
+        stopVibration()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }

@@ -6,5 +6,8 @@ import androidx.room.PrimaryKey
 data class Template(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
-    val totalCycles: Int
+    val totalCycles: Int,
+	val isVibrateEnabled: Boolean = true, 
+    val isSoundEnabled: Boolean = true,  
+    val ringtoneDurationSeconds: Int = 10 
 )

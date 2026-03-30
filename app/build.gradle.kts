@@ -12,8 +12,8 @@ android {
         applicationId = "com.reminder.multistage"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     // 签名配置：从环境变量读取 GitHub Secrets
