@@ -12,14 +12,14 @@ android {
         applicationId = "com.reminder.multistage"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.2.2"
+        versionCode = 6
+        versionName = "1.2.3"
     }
 
     // 签名配置：从环境变量读取 GitHub Secrets
     signingConfigs {
         create("release") {
-            // 如果环境变量中没有路径，默认找根目录下的 release.jks
+            // 如果环境变量中没有路径，默认找app/release.jks
             val path = System.getenv("KEY_STORE_PATH") ?: "release.jks"
             storeFile = file(path)
             storePassword = System.getenv("KEY_STORE_PASSWORD")

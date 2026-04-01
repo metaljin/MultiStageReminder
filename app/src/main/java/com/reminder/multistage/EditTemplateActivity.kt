@@ -241,7 +241,7 @@ fun EditTemplateScreen(existingId: Long, db: AppDatabase, onExit: () -> Unit) {
                             Stage(
                                 templateId = newId,
                                 orderIndex = i,
-                                durationMinutes = s.minutes.toIntOrNull() ?: 1,
+                                durationMinutes = s.minutes.toIntOrNull() ?: 10,
                                 ringtoneUri = s.ringtoneUri,
                                 ringtoneName = s.ringtoneName,
                                 maxPlaySeconds = 0

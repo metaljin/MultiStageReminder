@@ -73,7 +73,10 @@ class ReminderService : Service() {
                     displayTime = "完成"
                     displayInfo = "所有提醒已结束"
                     updateNotification("提醒任务已完成")
-                    handler.postDelayed({ stopSelf() }, 3000)
+					val finalDelay = data.template.ringtoneDurationSeconds * 1000L
+                    handler.postDelayed({ 
+						if (isRunning) stopSelf() 
+					}, finalDelay)
                     return
                 }
             }
