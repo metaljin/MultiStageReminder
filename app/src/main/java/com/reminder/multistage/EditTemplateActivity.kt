@@ -38,7 +38,7 @@ import kotlinx.coroutines.withContext
 
 // UI 数据模型：确保 ringtoneUri 匹配 res/raw/base_reminder.ogg
 data class StageUIItem(
-    val minutes: String = "1",
+    val minutes: String = "10",
     val ringtoneUri: String = "android.resource://com.reminder.multistage/raw/base_reminder",
     val ringtoneName: String = "默认铃声"
 )

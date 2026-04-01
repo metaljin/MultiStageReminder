@@ -12,7 +12,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="多阶段提醒"
+        android:label="多段提醒器"
         android:supportsRtl="true"
         android:theme="@style/Theme.MultiStageReminder">
         
