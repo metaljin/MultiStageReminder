@@ -1,6 +1,7 @@
 package com.reminder.multistage
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -17,10 +18,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -41,23 +43,6 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 MainScreen(
                     db = db,
-                    onStartService = { templateId ->
-                        val intent = Intent(this, ReminderService::class.java).apply {
-                            action = ReminderService.ACTION_START
-                            putExtra(ReminderService.EXTRA_ID, templateId)
-                        }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
-                        }
-                    },
-                    onStopService = {
-                        val intent = Intent(this, ReminderService::class.java).apply {
-                            action = ReminderService.ACTION_STOP
-                        }
-                        startService(intent)
-                    },
                     onEdit = { templateId ->
                         val intent = Intent(this, EditTemplateActivity::class.java).apply {
                             putExtra("TEMPLATE_ID", templateId)
@@ -77,32 +62,17 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(
     db: AppDatabase,
-    onStartService: (Long) -> Unit,
-    onStopService: () -> Unit,
     onEdit: (Long) -> Unit,
     onAdd: () -> Unit
 ) {
+    val context = LocalContext.current
     val templates by db.reminderDao().getAllTemplates().collectAsStateWithLifecycle(initialValue = emptyList())
+    // 关键：实时观察 Service 的 StateFlow
+    val serviceState by ReminderService.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    
-    // 状态监听
-    var serviceActive by remember { mutableStateOf(ReminderService.isRunning) }
-    var activeId by remember { mutableStateOf(ReminderService.runningTemplateId) }
-    var currentTime by remember { mutableStateOf(ReminderService.displayTime) }
-    var currentInfo by remember { mutableStateOf(ReminderService.displayInfo) }
-
-    LaunchedEffect(Unit) {
-        while(true) {
-            serviceActive = ReminderService.isRunning
-            activeId = ReminderService.runningTemplateId
-            currentTime = ReminderService.displayTime
-            currentInfo = ReminderService.displayInfo
-            delay(500)
-        }
-    }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("多阶段提醒") }) },
+        topBar = { TopAppBar(title = { Text("多段提醒器") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = onAdd) {
                 Icon(Icons.Default.Add, contentDescription = "添加")
@@ -120,14 +90,29 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(templates, key = { it.template.id }) { item ->
-                    val isThisOneRunning = serviceActive && item.template.id == activeId
+                    val isThisOneRunning = serviceState.isRunning && item.template.id == serviceState.templateId
+                    
                     TemplateItemCard(
                         item = item,
                         isRunning = isThisOneRunning,
-                        timeText = currentTime,
-                        infoText = currentInfo,
-                        onStart = { onStartService(item.template.id) },
-                        onStop = onStopService,
+                        state = serviceState,
+                        onStart = {
+                            val intent = Intent(context, ReminderService::class.java).apply {
+                                action = ReminderService.ACTION_START
+                                putExtra(ReminderService.EXTRA_ID, item.template.id)
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
+                        },
+                        onAction = { action ->
+                            val intent = Intent(context, ReminderService::class.java).apply {
+                                this.action = action
+                            }
+                            context.startService(intent)
+                        },
                         onEdit = { onEdit(item.template.id) },
                         onDelete = {
                             scope.launch(Dispatchers.IO) {
@@ -145,10 +130,9 @@ fun MainScreen(
 fun TemplateItemCard(
     item: TemplateWithStages,
     isRunning: Boolean,
-    timeText: String,
-    infoText: String,
+    state: ServiceState,
     onStart: () -> Unit,
-    onStop: () -> Unit,
+    onAction: (String) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -173,14 +157,14 @@ fun TemplateItemCard(
                 )
                 if (isRunning) {
                     Surface(
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (state.isPaused) Color.Gray else MaterialTheme.colorScheme.primary,
                         shape = MaterialTheme.shapes.extraSmall
                     ) {
                         Text(
-                            "运行中", 
+                            if (state.isPaused) "暂停中" else "运行中", 
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = Color.White
                         )
                     }
                 }
@@ -190,21 +174,20 @@ fun TemplateItemCard(
 
             // 第二行：倒计时展示 或 基础信息
             if (isRunning) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Text(
-                        text = timeText, 
-                        style = MaterialTheme.typography.displayMedium, 
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = infoText, 
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                Column {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = state.displayTime, 
+                            style = MaterialTheme.typography.displayMedium, 
+                            color = if (state.isPaused) Color.Gray else MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = state.displayInfo, 
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
                 }
             } else {
                 Text(
@@ -215,32 +198,61 @@ fun TemplateItemCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 第三行：动作按钮
+            // 第三行：控制按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!isRunning) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                if (isRunning) {
+                    // 左下角：暂停/恢复 和 跳过 按钮
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            onAction(if (state.isPaused) ReminderService.ACTION_RESUME else ReminderService.ACTION_PAUSE)
+                        }) {
+                            Icon(
+                                imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = "暂停/恢复",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        
+                        // 跳过按钮，如果不能跳过则置灰
+                        IconButton(
+                            onClick = { onAction(ReminderService.ACTION_SKIP) },
+                            enabled = state.canSkip
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "下一阶段",
+                                tint = if (state.canSkip) MaterialTheme.colorScheme.primary else Color.Gray
+                            )
+                        }
                     }
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, contentDescription = "编辑")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = onStart) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("开始任务")
-                    }
-                } else {
+
+                    // 右侧：停止按钮
                     Button(
-                        onClick = onStop,
+                        onClick = { onAction(ReminderService.ACTION_STOP) },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("强制停止")
+                    }
+                } else {
+                    // 非运行状态的按钮
+                    Row {
+                        IconButton(onClick = onDelete) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+                        }
+                        IconButton(onClick = onEdit) {
+                            Icon(Icons.Default.Edit, contentDescription = "编辑")
+                        }
+                    }
+                    Button(onClick = onStart) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("开始任务")
                     }
                 }
             }
